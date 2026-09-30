@@ -1,6 +1,7 @@
 # Measurement Trail
 
 [![tests](https://github.com/sparkainlp-x/measurement-trail/actions/workflows/tests.yml/badge.svg)](https://github.com/sparkainlp-x/measurement-trail/actions/workflows/tests.yml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23067465.svg)](https://doi.org/10.5281/zenodo.23067465)
 
 A compact, offline prototype for recording provenance as a measurement moves through device and software processing steps. It uses only the Python standard library and stores one canonical JSON record per line.
 
