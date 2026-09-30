@@ -374,6 +374,20 @@ class MeasurementTrailTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, 0)
         self.assertIn(measurement_trail.__version__, out.getvalue())
 
+    def test_metadata_shape_is_validated(self):
+        for metadata in (["status"], {"": "x"}, {" ": "x"}):
+            with self.subTest(metadata=metadata):
+                with self.assertRaisesRegex(TrailError, "metadata"):
+                    append_event(self.path, {**self.event(), "metadata": metadata})
+        self.assertFalse(self.path.exists())
+
+    def test_invalid_stored_event_is_reported_with_line_number(self):
+        record = make_record(1, None, self.event())
+        record["event"]["step"] = ""
+        self.path.write_text(canonical_json(record) + "\n", encoding="utf-8")
+        with self.assertRaisesRegex(TrailError, "line 1: invalid event"):
+            verify_trail(self.path)
+
 
 if __name__ == "__main__":
     unittest.main()
