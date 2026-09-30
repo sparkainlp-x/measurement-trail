@@ -1,5 +1,7 @@
 # Measurement Trail
 
+[![tests](https://github.com/sparkainlp-x/measurement-trail/actions/workflows/tests.yml/badge.svg)](https://github.com/sparkainlp-x/measurement-trail/actions/workflows/tests.yml)
+
 A compact, offline prototype for recording provenance as a measurement moves through device and software processing steps. It uses only the Python standard library and stores one canonical JSON record per line.
 
 ## Requirements
