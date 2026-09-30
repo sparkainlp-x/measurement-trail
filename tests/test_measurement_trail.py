@@ -331,6 +331,37 @@ class MeasurementTrailTests(unittest.TestCase):
             sorted(record["seq"] for record in self._records()), list(range(1, count + 1))
         )
 
+    def test_duplicate_event_id_is_rejected_on_append_and_verify(self):
+        append_event(self.path, self.event())
+        before = self.path.read_bytes()
+        with self.assertRaisesRegex(TrailError, "event_id 'event-sensor-capture' already exists"):
+            append_event(self.path, {**self.event(), "timestamp": "2026-09-30T09:00:01Z"})
+        self.assertEqual(self.path.read_bytes(), before)
+        code, _, err = self._cli("append", str(self.path), "--event-json", json.dumps(self.event()))
+        self.assertEqual(code, 2)
+        self.assertIn("already exists", err)
+
+        first = make_record(1, None, self.event())
+        second = make_record(2, first["record_hash"], self.event())
+        self.path.write_text(
+            canonical_json(first) + "\n" + canonical_json(second) + "\n", encoding="utf-8"
+        )
+        with self.assertRaisesRegex(TrailError, "line 2: duplicate event_id"):
+            verify_trail(self.path)
+
+    def test_events_without_event_id_may_repeat(self):
+        event = {k: v for k, v in self.event().items() if k != "event_id"}
+        append_event(self.path, event)
+        append_event(self.path, event)
+        self.assertEqual(verify_trail(self.path).record_count, 2)
+
+    def test_non_monotonic_timestamps_are_accepted(self):
+        # Documented behaviour: devices may have skewed clocks or report late, so
+        # timestamp order is caller-supplied metadata and is not enforced.
+        append_event(self.path, {**self.event("later"), "timestamp": "2026-09-30T10:00:00Z"})
+        append_event(self.path, {**self.event("earlier"), "timestamp": "2026-09-30T09:00:00Z"})
+        self.assertEqual(verify_trail(self.path).record_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -59,6 +59,7 @@ class TrailError(ValueError):
 class VerificationResult:
     record_count: int
     last_hash: str | None
+    event_ids: frozenset[str] = frozenset()
 
 
 def canonical_json(value: Any) -> str:
@@ -206,6 +207,7 @@ def _verify_stream(stream: BinaryIO) -> VerificationResult:
     expected_seq = 1
     expected_prev_hash: str | None = None
     last_hash: str | None = None
+    seen_event_ids: set[str] = set()
 
     line_number = 0
     while True:
@@ -257,17 +259,26 @@ def _verify_stream(stream: BinaryIO) -> VerificationResult:
         if canonical_json(record) != text:
             raise TrailError(f"line {line_number}: record is not in canonical JSON form")
 
+        event_id = record["event"].get("event_id")
+        if event_id is not None:
+            if event_id in seen_event_ids:
+                raise TrailError(f"line {line_number}: duplicate event_id {event_id!r}")
+            seen_event_ids.add(event_id)
+
         last_hash = calculated_hash
         expected_prev_hash = calculated_hash
         expected_seq += 1
 
-    return VerificationResult(record_count=expected_seq - 1, last_hash=last_hash)
+    return VerificationResult(
+        record_count=expected_seq - 1, last_hash=last_hash, event_ids=frozenset(seen_event_ids)
+    )
 
 
 def verify_trail(path: str | Path) -> VerificationResult:
     """Verify all records and their canonical encoding, sequence, and hash links.
 
-    On POSIX a shared lock is held while reading, so a
+    Also rejects a repeated ``event_id``. Timestamps are not required to be
+    monotonic (see README). On POSIX a shared lock is held while reading, so a
     concurrent ``append_event`` is never observed half-written.
     """
     trail_path = Path(path)
@@ -299,6 +310,9 @@ def append_event(path: str | Path, event: Any) -> dict[str, Any]:
             fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
         stream.seek(0)
         current = _verify_stream(stream)
+        event_id = validated_event.get("event_id")
+        if event_id is not None and event_id in current.event_ids:
+            raise TrailError(f"event_id {event_id!r} already exists in the trail")
         record = make_record(current.record_count + 1, current.last_hash, validated_event)
         line = (canonical_json(record) + "\n").encode("utf-8")
         try:
