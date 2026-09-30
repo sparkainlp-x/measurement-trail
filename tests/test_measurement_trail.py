@@ -2,6 +2,8 @@
 import contextlib
 import io
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -303,6 +305,31 @@ class MeasurementTrailTests(unittest.TestCase):
         self.assertEqual((code, out), (2, ""))
         self.assertIn("nesting is too deep", err)
         self.assertFalse(other.exists())
+
+    @unittest.skipIf(measurement_trail.fcntl is None, "advisory locking is POSIX-only")
+    def test_concurrent_cli_appends_do_not_corrupt_the_trail(self):
+        script = str(ROOT / "measurement_trail.py")
+        count = 24
+        processes = [
+            subprocess.Popen(
+                [
+                    sys.executable, script, "append", str(self.path), "--event-json",
+                    json.dumps({**self.event(f"step-{index}"), "event_id": f"evt-{index}"}),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+            )
+            for index in range(count)
+        ]
+        for process in processes:
+            _, err = process.communicate(timeout=60)
+            self.assertEqual(process.returncode, 0, err)
+        result = verify_trail(self.path)
+        self.assertEqual(result.record_count, count)
+        self.assertEqual(
+            sorted(record["seq"] for record in self._records()), list(range(1, count + 1))
+        )
 
 
 if __name__ == "__main__":

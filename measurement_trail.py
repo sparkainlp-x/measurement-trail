@@ -4,6 +4,8 @@
 
 The tool only ever appends records, but the trail file itself is not write-protected;
 verification detects edits, reordering and broken links, not truncation of trailing records.
+On POSIX systems, appends hold an exclusive advisory lock on the trail file so concurrent
+appenders cannot interleave; on other platforms (e.g. Windows) no lock is taken.
 """
 
 from __future__ import annotations
@@ -16,7 +18,12 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
+
+try:  # POSIX only; used to serialize concurrent appends to one trail file.
+    import fcntl
+except ImportError:  # pragma: no cover - e.g. Windows
+    fcntl = None  # type: ignore[assignment]
 
 SCHEMA_VERSION = 1
 _RECORD_KEYS = {"schema_version", "seq", "prev_hash", "event", "record_hash"}
@@ -194,93 +201,112 @@ def _validate_hash(value: Any, label: str, line_number: int) -> None:
         raise TrailError(f"line {line_number}: {label} must be a 64-character lowercase SHA-256 hex digest")
 
 
-def verify_trail(path: str | Path) -> VerificationResult:
-    """Verify all records and their canonical encoding, sequence, and hash links."""
-    trail_path = Path(path)
+def _verify_stream(stream: BinaryIO) -> VerificationResult:
+    """Verify records read from ``stream`` (positioned at the start of the trail)."""
     expected_seq = 1
     expected_prev_hash: str | None = None
     last_hash: str | None = None
 
-    try:
-        stream = trail_path.open("rb")
-    except OSError as exc:
-        raise TrailError(f"cannot open trail {trail_path}: {exc}") from exc
+    line_number = 0
+    while True:
+        raw_line = stream.readline()
+        if raw_line == b"":
+            break
+        line_number += 1
+        if not raw_line.endswith(b"\n"):
+            raise TrailError(f"line {line_number}: record is missing its terminating newline")
+        try:
+            text = raw_line[:-1].decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise TrailError(f"line {line_number}: record is not valid UTF-8") from exc
+        if not text:
+            raise TrailError(f"line {line_number}: blank lines are not allowed")
 
-    with stream:
-        line_number = 0
-        while True:
-            raw_line = stream.readline()
-            if raw_line == b"":
-                break
-            line_number += 1
-            if not raw_line.endswith(b"\n"):
-                raise TrailError(f"line {line_number}: record is missing its terminating newline")
-            try:
-                text = raw_line[:-1].decode("utf-8")
-            except UnicodeDecodeError as exc:
-                raise TrailError(f"line {line_number}: record is not valid UTF-8") from exc
-            if not text:
-                raise TrailError(f"line {line_number}: blank lines are not allowed")
+        record = _parse_json_line(text, line_number)
+        if not isinstance(record, dict):
+            raise TrailError(f"line {line_number}: record must be a JSON object")
+        if set(record) != _RECORD_KEYS:
+            missing = _RECORD_KEYS - set(record)
+            extra = set(record) - _RECORD_KEYS
+            detail = []
+            if missing:
+                detail.append("missing " + ", ".join(sorted(missing)))
+            if extra:
+                detail.append("unsupported " + ", ".join(sorted(extra)))
+            raise TrailError(f"line {line_number}: invalid record fields ({'; '.join(detail)})")
 
-            record = _parse_json_line(text, line_number)
-            if not isinstance(record, dict):
-                raise TrailError(f"line {line_number}: record must be a JSON object")
-            if set(record) != _RECORD_KEYS:
-                missing = _RECORD_KEYS - set(record)
-                extra = set(record) - _RECORD_KEYS
-                detail = []
-                if missing:
-                    detail.append("missing " + ", ".join(sorted(missing)))
-                if extra:
-                    detail.append("unsupported " + ", ".join(sorted(extra)))
-                raise TrailError(f"line {line_number}: invalid record fields ({'; '.join(detail)})")
+        if type(record["schema_version"]) is not int or record["schema_version"] != SCHEMA_VERSION:
+            raise TrailError(f"line {line_number}: unsupported schema_version (expected {SCHEMA_VERSION})")
+        if type(record["seq"]) is not int or record["seq"] != expected_seq:
+            raise TrailError(f"line {line_number}: sequence mismatch (expected {expected_seq})")
+        if record["prev_hash"] != expected_prev_hash:
+            raise TrailError(f"line {line_number}: chain break in prev_hash")
+        if expected_prev_hash is not None:
+            _validate_hash(record["prev_hash"], "prev_hash", line_number)
 
-            if type(record["schema_version"]) is not int or record["schema_version"] != SCHEMA_VERSION:
-                raise TrailError(f"line {line_number}: unsupported schema_version (expected {SCHEMA_VERSION})")
-            if type(record["seq"]) is not int or record["seq"] != expected_seq:
-                raise TrailError(f"line {line_number}: sequence mismatch (expected {expected_seq})")
-            if record["prev_hash"] != expected_prev_hash:
-                raise TrailError(f"line {line_number}: chain break in prev_hash")
-            if expected_prev_hash is not None:
-                _validate_hash(record["prev_hash"], "prev_hash", line_number)
+        try:
+            validate_event(record["event"])
+        except TrailError as exc:
+            raise TrailError(f"line {line_number}: invalid event: {exc}") from exc
 
-            try:
-                validate_event(record["event"])
-            except TrailError as exc:
-                raise TrailError(f"line {line_number}: invalid event: {exc}") from exc
+        _validate_hash(record["record_hash"], "record_hash", line_number)
+        body = {key: record[key] for key in ("schema_version", "seq", "prev_hash", "event")}
+        calculated_hash = _hash_body(body)
+        if record["record_hash"] != calculated_hash:
+            raise TrailError(f"line {line_number}: record_hash mismatch")
+        if canonical_json(record) != text:
+            raise TrailError(f"line {line_number}: record is not in canonical JSON form")
 
-            _validate_hash(record["record_hash"], "record_hash", line_number)
-            body = {key: record[key] for key in ("schema_version", "seq", "prev_hash", "event")}
-            calculated_hash = _hash_body(body)
-            if record["record_hash"] != calculated_hash:
-                raise TrailError(f"line {line_number}: record_hash mismatch")
-            if canonical_json(record) != text:
-                raise TrailError(f"line {line_number}: record is not in canonical JSON form")
-
-            last_hash = calculated_hash
-            expected_prev_hash = calculated_hash
-            expected_seq += 1
+        last_hash = calculated_hash
+        expected_prev_hash = calculated_hash
+        expected_seq += 1
 
     return VerificationResult(record_count=expected_seq - 1, last_hash=last_hash)
 
 
+def verify_trail(path: str | Path) -> VerificationResult:
+    """Verify all records and their canonical encoding, sequence, and hash links.
+
+    On POSIX a shared lock is held while reading, so a
+    concurrent ``append_event`` is never observed half-written.
+    """
+    trail_path = Path(path)
+    try:
+        stream = trail_path.open("rb")
+    except OSError as exc:
+        raise TrailError(f"cannot open trail {trail_path}: {exc}") from exc
+    with stream:
+        if fcntl is not None:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_SH)
+        return _verify_stream(stream)
+
+
 def append_event(path: str | Path, event: Any) -> dict[str, Any]:
-    """Append one validated event without rewriting existing records."""
+    """Append one validated event without rewriting existing records.
+
+    On POSIX the verify-then-append sequence runs under an exclusive advisory
+    lock on the trail file, so concurrent appenders cannot interleave or reuse a
+    sequence number. On other platforms no lock is taken.
+    """
     validated_event = validate_event(event)
     trail_path = Path(path)
-    if trail_path.exists():
-        current = verify_trail(trail_path)
-    else:
-        current = VerificationResult(record_count=0, last_hash=None)
-
-    record = make_record(current.record_count + 1, current.last_hash, validated_event)
-    line = (canonical_json(record) + "\n").encode("utf-8")
     try:
-        with trail_path.open("ab") as stream:
+        stream = trail_path.open("a+b")
+    except OSError as exc:
+        raise TrailError(f"cannot open trail {trail_path}: {exc}") from exc
+    with stream:
+        if fcntl is not None:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        stream.seek(0)
+        current = _verify_stream(stream)
+        record = make_record(current.record_count + 1, current.last_hash, validated_event)
+        line = (canonical_json(record) + "\n").encode("utf-8")
+        try:
+            stream.seek(0, 2)
             stream.write(line)
             stream.flush()
-    except OSError as exc:
-        raise TrailError(f"cannot append to trail {trail_path}: {exc}") from exc
+        except OSError as exc:
+            raise TrailError(f"cannot append to trail {trail_path}: {exc}") from exc
     return record
 
 
