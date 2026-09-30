@@ -25,6 +25,8 @@ try:  # POSIX only; used to serialize concurrent appends to one trail file.
 except ImportError:  # pragma: no cover - e.g. Windows
     fcntl = None  # type: ignore[assignment]
 
+__version__ = "1.0.0"
+
 SCHEMA_VERSION = 1
 _RECORD_KEYS = {"schema_version", "seq", "prev_hash", "event", "record_hash"}
 _EVENT_REQUIRED = {"timestamp", "step", "actor"}
@@ -336,6 +338,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Append and verify an offline hash-chained measurement provenance trail."
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     append_parser = subparsers.add_parser("append", help="append one structured event")

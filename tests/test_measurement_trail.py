@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -361,6 +362,17 @@ class MeasurementTrailTests(unittest.TestCase):
         append_event(self.path, {**self.event("later"), "timestamp": "2026-09-30T10:00:00Z"})
         append_event(self.path, {**self.event("earlier"), "timestamp": "2026-09-30T09:00:00Z"})
         self.assertEqual(verify_trail(self.path).record_count, 2)
+
+    def test_version_is_single_sourced_and_matches_citation(self):
+        citation = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
+        match = re.search(r"^version: (\S+)$", citation, re.MULTILINE)
+        self.assertIsNotNone(match)
+        self.assertEqual(measurement_trail.__version__, match.group(1))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as caught:
+            measurement_trail.main(["--version"])
+        self.assertEqual(caught.exception.code, 0)
+        self.assertIn(measurement_trail.__version__, out.getvalue())
 
 
 if __name__ == "__main__":
