@@ -285,6 +285,25 @@ class MeasurementTrailTests(unittest.TestCase):
         with self.assertRaisesRegex(TrailError, "canonical JSON"):
             verify_trail(self.path)
 
+    def test_deeply_nested_json_is_reported_as_trail_error(self):
+        deep = "[" * 100_000
+        self.path.write_text(deep + "\n", encoding="utf-8")
+        with self.assertRaisesRegex(TrailError, "nesting is too deep"):
+            verify_trail(self.path)
+        code, out, err = self._cli("verify", str(self.path))
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("nesting is too deep", err)
+
+        other = Path(self.temp_dir.name) / "other.jsonl"
+        nested_event = (
+            '{"timestamp":"2026-09-30T09:00:00Z","step":"x","actor":"a","metadata":{"k":'
+            + deep
+        )
+        code, out, err = self._cli("append", str(other), "--event-json", nested_event)
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("nesting is too deep", err)
+        self.assertFalse(other.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -64,7 +64,7 @@ def canonical_json(value: Any) -> str:
             ensure_ascii=False,
             allow_nan=False,
         )
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         raise TrailError(f"value is not canonical-JSON serializable: {exc}") from exc
 
 
@@ -82,10 +82,17 @@ def _reject_constant(token: str) -> Any:
 
 
 def _strict_json_loads(text: str) -> Any:
-    """Parse JSON, rejecting duplicate keys and NaN/Infinity (raises ValueError)."""
-    return json.loads(
-        text, object_pairs_hook=_reject_duplicate_keys, parse_constant=_reject_constant
-    )
+    """Parse JSON, rejecting duplicate keys and NaN/Infinity (raises ValueError).
+
+    Excessively nested input (RecursionError) is also reported as ValueError. On
+    Python 3.11+ ValueError also covers integers beyond the int-to-string digit limit.
+    """
+    try:
+        return json.loads(
+            text, object_pairs_hook=_reject_duplicate_keys, parse_constant=_reject_constant
+        )
+    except RecursionError as exc:
+        raise ValueError("JSON nesting is too deep") from exc
 
 
 def _parse_json_line(text: str, line_number: int) -> Any:
