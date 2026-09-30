@@ -25,7 +25,7 @@ try:  # POSIX only; used to serialize concurrent appends to one trail file.
 except ImportError:  # pragma: no cover - e.g. Windows
     fcntl = None  # type: ignore[assignment]
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 SCHEMA_VERSION = 1
 _RECORD_KEYS = {"schema_version", "seq", "prev_hash", "event", "record_hash"}
