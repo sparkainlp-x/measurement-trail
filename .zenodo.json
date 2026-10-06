@@ -1,0 +1,35 @@
+{
+  "upload_type": "software",
+  "title": "Measurement Trail",
+  "description": "<p>Offline, standard-library-only prototype that records measurement-processing provenance as a SHA-256 hash-chained JSONL trail and verifies its integrity; not tamper-proof storage.</p>",
+  "creators": [
+    {
+      "name": "Brisson, Jean-François",
+      "affiliation": "Spark AI NLP",
+      "orcid": "0009-0000-9778-5374"
+    }
+  ],
+  "access_right": "open",
+  "license": "AGPL-3.0-only",
+  "keywords": [
+    "provenance",
+    "hash-chain",
+    "measurement",
+    "integrity",
+    "offline",
+    "research software"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/sparkainlp-x/measurement-trail",
+      "relation": "isSupplementTo",
+      "resource_type": "software"
+    }
+  ],
+  "language": "eng",
+  "communities": [
+    {
+      "identifier": "spark-ai-nlp"
+    }
+  ]
+}
