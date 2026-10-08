@@ -10,6 +10,13 @@ authors:
     affiliation: "Spark AI NLP"
 version: 1.1.1
 date-released: "2026-10-08"
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23067465
+    description: "Concept DOI (all versions)"
+  - type: doi
+    value: 10.5281/zenodo.23241693
+    description: "Version DOI for v1.1.1"
 license: AGPL-3.0-only
 repository-code: "https://github.com/sparkainlp-x/measurement-trail"
 abstract: "Offline, standard-library-only prototype that records measurement-processing provenance as a SHA-256 hash-chained JSONL trail and verifies its integrity; not tamper-proof storage."

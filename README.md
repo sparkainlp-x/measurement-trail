@@ -69,7 +69,7 @@ Measurement Trail is useful when you want a tiny, dependency-free, offline, appe
 
 ## Citation
 
-See [CITATION.cff](CITATION.cff).
+See [CITATION.cff](CITATION.cff). Archived on Zenodo: concept DOI [10.5281/zenodo.23067465](https://doi.org/10.5281/zenodo.23067465) (all versions); v1.1.1: [10.5281/zenodo.23241693](https://doi.org/10.5281/zenodo.23241693).
 
 ## License
 
