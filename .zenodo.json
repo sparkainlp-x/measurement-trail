@@ -1,7 +1,9 @@
 {
   "upload_type": "software",
-  "title": "Measurement Trail",
-  "description": "<p>Offline, standard-library-only prototype that records measurement-processing provenance as a SHA-256 hash-chained JSONL trail and verifies its integrity; not tamper-proof storage.</p>",
+  "title": "Measurement Trail: hash-chained provenance records for measurement processing steps",
+  "version": "1.1.1",
+  "publication_date": "2026-10-08",
+  "description": "<p>Measurement Trail records the provenance of a measurement as it moves through device and software processing steps. Each event (timestamp, step, actor, optional metadata and payload digest) is stored as one canonical JSON line with a sequence number, the previous record's hash and its own SHA-256 record hash. Payloads are referenced by digest only. The append command verifies the existing trail before writing and holds an advisory file lock on Linux and macOS; the verify command checks schema, canonical encoding, sequence and hash links.</p><p>Scope: this is an integrity check, not tamper-proof storage. Records are unsigned, so authorship is not authenticated, and removal of trailing records cannot be detected without independently stored checkpoints. It says nothing about sensor accuracy or calibration.</p><p>Usage: Python 3.10 or later, standard library only; <code>pip install .</code> adds a <code>measurement-trail</code> command. Run <code>python3 measurement_trail.py verify samples/example.jsonl</code>. Tests: <code>python3 -m unittest discover -s tests -v</code> (run in CI on Python 3.10 to 3.13 with coverage).</p><p>Citation: cite the concept DOI <a href=\"https://doi.org/10.5281/zenodo.23067465\">10.5281/zenodo.23067465</a> for all versions, or the version DOI of the release you used. Source code: <a href=\"https://github.com/sparkainlp-x/measurement-trail\">github.com/sparkainlp-x/measurement-trail</a>. Licence: AGPL-3.0-only; commercial licensing is available (see COMMERCIAL-LICENSE.md).</p>",
   "creators": [
     {
       "name": "Brisson, Jean-François",
@@ -12,12 +14,14 @@
   "access_right": "open",
   "license": "AGPL-3.0-only",
   "keywords": [
-    "provenance",
-    "hash-chain",
-    "measurement",
-    "integrity",
+    "data provenance",
+    "hash chain",
+    "audit trail",
+    "JSON Lines",
+    "measurement metadata",
+    "integrity verification",
     "offline",
-    "research software"
+    "Python"
   ],
   "related_identifiers": [
     {
@@ -31,5 +35,6 @@
     {
       "identifier": "spark-ai-nlp"
     }
-  ]
+  ],
+  "notes": "Evidence status: SYNTHETIC example data; no field performance is claimed. Commercial licensing: see COMMERCIAL-LICENSE.md."
 }
